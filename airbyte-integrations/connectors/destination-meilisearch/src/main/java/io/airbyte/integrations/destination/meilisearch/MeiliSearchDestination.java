@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.meilisearch.sdk.Client;
 import com.meilisearch.sdk.Config;
 import com.meilisearch.sdk.Index;
+import com.meilisearch.sdk.Task;
 import io.airbyte.commons.json.Jsons;
 import io.airbyte.commons.text.Names;
 import io.airbyte.integrations.BaseConnector;
@@ -117,7 +118,11 @@ public class MeiliSearchDestination extends BaseConnector implements Destination
         client.deleteIndex(indexName);
       }
 
-      final Index index = client.getOrCreateIndex(indexName, AB_PK_COLUMN);
+      // final Index index = client.getOrCreateIndex(indexName, AB_PK_COLUMN);
+      final Task indexTask = client.createIndex(indexName, AB_PK_COLUMN);
+      client.waitForTask(indexTask.getUid());
+      final Index index = client.index(indexName);
+
       map.put(indexName, index);
     }
     return map;
@@ -150,14 +155,19 @@ public class MeiliSearchDestination extends BaseConnector implements Destination
           .peek(o -> ((ObjectNode) o).put(AB_PK_COLUMN, Names.toAlphanumericAndUnderscore(UUID.randomUUID().toString())))
           .peek(o -> ((ObjectNode) o).put(AB_EMITTED_AT_COLUMN, LocalDateTime.now().format(FORMATTER)))
           .collect(Collectors.toList()));
-      final String s = index.addDocuments(json);
-      LOGGER.info("add docs response {}", s);
+      // final String s = index.addDocuments(json);
+      final Task t = index.addDocuments(json);
+
+      // LOGGER.info("add docs response {}", s);
+      LOGGER.info("add docs response {}", t);
       LOGGER.info("waiting for update to be applied started {}", Instant.now());
       try {
-        index.waitForPendingUpdate(Jsons.deserialize(s).get("updateId").asInt());
+        // index.waitForPendingUpdate(Jsons.deserialize(s).get("updateId").asInt());
+        index.waitForTask(t.getUid());
       } catch (final Exception e) {
         LOGGER.error("waiting for update to be applied failed.", e);
-        LOGGER.error("printing MeiliSearch update statuses: {}", Arrays.asList(index.getUpdates()));
+        // LOGGER.error("printing MeiliSearch update statuses: {}", Arrays.asList(index.getUpdates()));
+        LOGGER.error("printing MeiliSearch update statuses: {}", Arrays.asList(index.getTasks()));
         throw e;
       }
       LOGGER.info("waiting for update  to be applied completed {}", Instant.now());
